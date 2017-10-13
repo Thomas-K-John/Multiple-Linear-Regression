@@ -1,0 +1,241 @@
+---
+title: "Multiple Linear Regression on Customer Data"
+author: "Insofe Lab Session"
+date: "July 02 , 2017"
+output:
+  word_document:
+    toc_depth: '3'
+  pdf_document:
+    toc_depth: '3'
+  html_document:
+    toc_depth: 3
+    toc_float: yes
+---
+```{r}
+# Go through the data and understand the attributes to get the info of the variables.
+```
+
+Write a code to clear the environment if needed
+```{r}
+rm(list = ls(all = TRUE))
+```
+
+Write a code to set the working directory.
+```{r }
+setwd("I:/DATA-SCIENCE/Insofe/Assignments/MultipleLinearRegression")
+
+```
+Think and load the libraries as and when required in this place only as best practice
+```{r}
+library(vegan)
+library(corrplot)
+library(car)
+library(DMwR)
+library(MASS)
+library(e1071)
+```
+Write a code to read the csv file as "data" as per required
+```{r eval=TRUE }
+customer.data = read.csv(file = "20170702_Batch30_CSE7302c_CustomerData_Assignment.csv", header = TRUE) 
+```
+Write a code to know the names of the attributes
+```{r}
+names(customer.data)
+```
+Write a code to find the dimensions of the data
+```{r}
+dim(customer.data)
+```
+
+Write a code to see the head  and tail of the dataset atleast 10rows
+```{r }
+head(x = customer.data, n = 10L)
+tail(x = customer.data, n = 10L)
+```
+Write a code to see the data types of the attributes 
+```{r }
+str(customer.data)
+```
+Write a code to remove the unuseful variables and store the data 
+```{r }
+customer.data.withoutCustomerId = customer.data
+customer.data.withoutCustomerId$CustomerID = NULL
+```
+Write a code to observe the variables and convert them into the required formats
+```{r}
+summary(customer.data.withoutCustomerId)
+# Code to remove the outliers (rows) 
+customer.data.withoutCustomerId = customer.data.withoutCustomerId[(customer.data.withoutCustomerId$FrequencyOFPlay < 10000),]
+customer.data.withoutCustomerId = customer.data.withoutCustomerId[(customer.data.withoutCustomerId$NoOfChildren <= 10),]
+customer.data.withoutCustomerId = customer.data.withoutCustomerId[(customer.data.withoutCustomerId$MinAgeOfChild < 15),]
+customer.data.withoutCustomerId = customer.data.withoutCustomerId[customer.data.withoutCustomerId$NoOfGamesBought < 100,]
+customer.data.withoutCustomerId = customer.data.withoutCustomerId[customer.data.withoutCustomerId$NoOfGamesPlayed < 500,]
+customer.data.withoutCustomerId = customer.data.withoutCustomerId[customer.data.withoutCustomerId$NoOfUnitsPurchased < 50,]
+customer.data.withoutCustomerId = customer.data.withoutCustomerId[customer.data.withoutCustomerId$FrquncyOfPurchase < 50,]
+
+#Removing some wrong values in the data and applying KNNImputation to these values
+# Age of children can never be greater than 100
+customer.data.withoutCustomerId[customer.data.withoutCustomerId$MinAgeOfChild > 100,"MinAgeOfChild"] = NA
+customer.data.withoutCustomerId[customer.data.withoutCustomerId$MaxAgeOfChild > 100,"MaxAgeOfChild"] = NA
+# Library DMwR
+customer.data.withoutCustomerId= knnImputation(data = customer.data.withoutCustomerId, k = 5)
+
+summary(customer.data.withoutCustomerId)
+
+# To convert the vaiables into Factors
+categorical.attributes = c("City", "FavoriteChannelOfTransaction", "FavoriteGame")
+customer.data.withoutCustomerId[,categorical.attributes] = data.frame(apply(customer.data.withoutCustomerId[,categorical.attributes],2,function(x) as.factor(as.character(x))))
+```
+Check the changes again using str() command
+```{r }
+str(customer.data.withoutCustomerId)
+```
+Write a Code to seperate the target
+```{r}
+TotalRevenueGenerated = customer.data.withoutCustomerId$TotalRevenueGenerated
+```
+Write a code to get the numerical attributes out and store them as data_num
+```{r }
+numerical.attributes = c("NoOfChildren", "MinAgeOfChild", "MaxAgeOfChild", "Tenure", "NoOfUnitsPurchased","FrquncyOfPurchase", "FrequencyOFPlay","NoOfGamesPlayed", "NoOfGamesBought")
+data_num = customer.data.withoutCustomerId[, numerical.attributes]
+```
+Write a code for Normalizing the data_num
+```{r}
+# Library vegan
+normalized.data_num = decostand(data_num, "normalize", MARGIN = 2)
+```
+Write a code to observe the correlation between the  attributes 
+```{r}
+r = cor(normalized.data_num)
+r
+```
+Write a code to plot the corrplot of correlation between the attributes
+```{r}
+# Library corrplot
+corrplot(r)
+```
+Write a code to seperate the categorical attributes
+```{r}
+data_cat = customer.data.withoutCustomerId[, categorical.attributes]
+```
+Write a code to combine the numerical,categorical data along with the target 
+```{r}
+customer.data.withoutCustomerId = cbind(normalized.data_num,data_cat, TotalRevenueGenerated)
+```
+Write a code to set the seed and comment why it is used.
+```{r}
+# Setting the seed to make sure that the same set of rows are taken each time when we randomly select the training and test data.
+set.seed(1234)
+```
+Write a code to get the train rows using sample 
+```{r}
+train.rows = sample(x = 1:nrow(customer.data.withoutCustomerId), size = 0.7*nrow(customer.data.withoutCustomerId))
+```
+Write a code to get the train and test 
+```{r}
+# train.data = customer.data.withoutCustomerId[train.rows, ]
+# test.data = customer.data.withoutCustomerId[-train.rows, ]
+```
+
+
+```{r}
+summary(customer.data.withoutCustomerId)
+numeric_Variables = customer.data.withoutCustomerId[,-c(11,12,13)]
+target_variable = subset(customer.data.withoutCustomerId,select="TotalRevenueGenerated")
+catDummies <- model.matrix(customer.data.withoutCustomerId$TotalRevenueGenerated ~ customer.data.withoutCustomerId$FavoriteChannelOfTransaction + customer.data.withoutCustomerId$FavoriteGame )[,1]
+
+rows=seq(1,nrow(customer.data.withoutCustomerId),1)
+set.seed(123)
+trainRows=sample(rows,(70*nrow(customer.data.withoutCustomerId))/100)
+train1 = data.frame(numeric_Variables, catDummies,TotalRevenueGenerated=target_variable)[trainRows,]
+test1 = data.frame(numeric_Variables, catDummies,TotalRevenueGenerated=target_variable)[-trainRows,]
+
+data2 <- as.matrix(data.frame(numeric_Variables, catDummies))
+train = data2[trainRows,] 
+test = data2[-trainRows,]
+
+#Target Variable
+y=customer.data.withoutCustomerId$TotalRevenueGenerated[trainRows]
+ytest = customer.data.withoutCustomerId$TotalRevenueGenerated[-trainRows]
+
+library(glmnet)
+cv <- cv.glmnet(train,y)  #By default alpha=1
+plot(cv)
+fit1=glmnet(train,y,lambda=cv$lambda.min,alpha=1)
+predict(fit1,train)
+library(DMwR)
+LASSOtrain = regr.eval(y, predict(fit1,train))
+LASSOtest = regr.eval(ytest, predict(fit1,test))
+LASSOtrain
+LASSOtest
+
+
+```
+
+Write a code to just plot the grahs between attributes and targets
+```{r}
+plot(customer.data.withoutCustomerId$City, customer.data.withoutCustomerId$TotalRevenueGenerated)
+plot(customer.data.withoutCustomerId$MinAgeOfChild, customer.data.withoutCustomerId$TotalRevenueGenerated)
+plot(customer.data.withoutCustomerId$MaxAgeOfChild, customer.data.withoutCustomerId$TotalRevenueGenerated)
+plot(customer.data.withoutCustomerId$FrquncyOfPurchase, customer.data.withoutCustomerId$TotalRevenueGenerated)
+plot(customer.data.withoutCustomerId$NoOfUnitsPurchased, customer.data.withoutCustomerId$TotalRevenueGenerated)
+plot(customer.data.withoutCustomerId$FrequencyOFPlay, customer.data.withoutCustomerId$TotalRevenueGenerated)
+plot(customer.data.withoutCustomerId$NoOfGamesPlayed, customer.data.withoutCustomerId$TotalRevenueGenerated)
+plot(customer.data.withoutCustomerId$NoOfGamesBought, customer.data.withoutCustomerId$TotalRevenueGenerated)
+```
+Write a code to form a linear regression model 
+```{r}
+lm.model.ordinary = lm(TotalRevenueGenerated ~ City + NoOfChildren + MinAgeOfChild + MaxAgeOfChild + NoOfUnitsPurchased + FrquncyOfPurchase + FrequencyOFPlay + (NoOfGamesPlayed * NoOfGamesBought) + FavoriteChannelOfTransaction + FavoriteGame , data = train.data)
+```
+Write a code to plot the model
+```{r}
+par(mfrow = c(2,2))
+plot(lm.model.ordinary)
+```
+Write a code to check the summary of the model 
+```{r}
+summary(lm.model.ordinary)
+```
+Write a code to predict the value of the target on the linear model 
+```{r}
+data.predict = predict(lm.model.ordinary, test.data[, !(names(test.data) %in% c("TotalRevenueGenerated"))])
+
+
+```
+Write a code to use stepAIC
+```{r}
+lm.model.stepAIC = stepAIC(lm.model.ordinary, direction = "both")
+```
+Write a code to predict it on stepAIC
+```{r}
+data.predict.stepAIC = predict(lm.model.stepAIC, test.data[, !(names(test.data) %in% c("TotalRevenueGenerated"))])
+```
+Write a code to check the multicollinearity in the lm model 
+```{r}
+vif(lm.model.ordinary)
+```
+Write a code to check the plots of the models
+```{r}
+par(mfrow = c(2,4))
+plot(lm.model.ordinary)
+plot(lm.model.stepAIC)
+```
+
+Write a code to check the multicollinearity problem
+```{r}
+vif(lm.model.stepAIC)
+```
+Write a code to evaluate the error in the prediction of AIC
+
+```{r}
+regr.eval(test.data$TotalRevenueGenerated, data.predict.stepAIC)
+```
+Write a code to evaluate the error on the prediction of Linear Regression
+```{r}
+regr.eval(test.data$TotalRevenueGenerated, data.predict)
+```
+
+
+
+
+
